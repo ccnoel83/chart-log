@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>チャートログ - 数学進捗ロガー</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font -->
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    
+    <style>
+        * {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        body {
+            background-color: #f8fafc;
+            color: #0f172a;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* カスタムスクロールバー設計 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* ホバーアニメーションスタイル */
+        .matrix-dot {
+            transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease;
+        }
+        .matrix-dot:hover {
+            transform: scale(1.6);
+            z-index: 20;
+            box-shadow: 0 0 8px rgba(0,0,0,0.18);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-slate-200 selection:text-slate-900">
+
+    <!-- ==================== View 1: 問題集一覧 (トップ画面) ==================== -->
+    <div id="view-library" class="w-full max-w-5xl mx-auto px-4 py-8 sm:py-12 flex-1 space-y-8">
+        <header class="pb-6 border-b border-slate-200/60">
+            <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                <div class="space-y-1.5">
+                    <div class="inline-flex items-center gap-2 px-2.5 py-1 bg-slate-100 rounded-md text-[11px] font-semibold text-slate-600">
+                        チャートログ
+                    </div>
+                    <h1 class="text-2xl font-bold tracking-tight text-slate-900">問題集一覧</h1>
+                    <p class="text-xs text-slate-500 leading-relaxed max-w-xl">
+                    　青チャートやFocus Goldなど、どのチャート式シリーズにも対応しています。反復学習を必要とする問題集の進捗率、正答率の全体像を把握することができます。
+                    </p>
+                </div>
+                
+                <div class="flex items-center gap-2 shrink-0">
+                    <!-- JSON バックアップ & 復元 -->
+                    <button onclick="exportDataJSON()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition flex items-center gap-1.5" title="全データをJSON保存">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        <span>データ書出し</span>
+                    </button>
+                    <button onclick="triggerJSONImport()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition flex items-center gap-1.5" title="JSONファイルから復元">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                        <span>復元</span>
+                    </button>
+                    <input type="file" id="json-file-input" class="hidden" accept=".json" onchange="importDataJSON(event)">
+
+                    <button onclick="openNewWorkbookModal()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <span>新規追加</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div id="workbook-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <!-- JSで動的生成 -->
+            </div>
+        </main>
+    </div>
+
+    <!-- ==================== View 2: 問題集詳細・進捗記録 (Tracker View) ==================== -->
+    <div id="view-tracker" class="hidden w-full max-w-6xl mx-auto px-4 py-6 flex-1 space-y-6">
+        <header class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white/90 backdrop-blur p-4 rounded-2xl shadow-xs border border-slate-100">
+            <div class="flex items-center gap-3">
+                <button onclick="showLibraryView()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition flex items-center gap-1">
+                    <span>←</span>
+                    <span>一覧に戻る</span>
+                </button>
+                <span class="text-slate-300">|</span>
+                <h2 id="tracker-title" class="text-base font-bold text-slate-900">青チャート 数学I+A</h2>
+            </div>
+
+            <!-- パラメータ調整バー -->
+            <div class="flex flex-wrap items-center gap-3 text-xs">
+                <!-- はてなマークボタンを例題数設定の左隣に配置 -->
+                <button onclick="openHelpModal()" class="w-7 h-7 rounded-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center transition shadow-sm shrink-0" title="使い方">
+                    ?
+                </button>
+
+                <!-- 例題数 +/-10 配置 -->
+                <div class="flex items-center gap-1 text-slate-600 bg-slate-100 p-1 rounded-lg">
+                    <span class="font-medium px-1.5">例題数:</span>
+                    <button onclick="addTotalCount(-10)" class="w-7 py-1 bg-white hover:bg-slate-200 rounded font-bold text-slate-700 shadow-2xs transition" title="10例題減らす">-10</button>
+                    <input type="number" id="input-total-count" min="1" max="1000" onchange="updateTotalCount(this.value)" class="w-14 bg-transparent font-bold text-center text-slate-900 focus:outline-none">
+                    <button onclick="addTotalCount(10)" class="w-7 py-1 bg-white hover:bg-slate-200 rounded font-bold text-slate-700 shadow-2xs transition" title="10例題追加">+10</button>
+                </div>
+
+                <div class="flex items-center gap-1.5 text-slate-600 bg-slate-100 px-3 py-1 rounded-lg">
+                    <span class="font-medium">目標周回:</span>
+                    <input type="number" id="input-max-rounds" min="1" max="10" onchange="updateMaxRounds(this.value)" class="w-10 bg-transparent font-bold text-center text-slate-900 focus:outline-none">
+                    <span class="text-slate-400">周</span>
+                </div>
+
+                <!-- 単元設定・編集ボタンを目標周回機能の右隣に配置 -->
+                <button onclick="openUnitModal()" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-xs">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                    <span>単元を設定・編集</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- 簡易的な使い方説明バナー -->
+        <div class="bg-indigo-50/70 border border-indigo-100/80 rounded-xl px-4 py-3 flex items-center justify-between text-xs text-indigo-900">
+            <div class="flex items-center gap-2 font-medium">
+                <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+                <span>まず単元を追加して例題数を設定し、あとは解いて記録するだけです。</span>
+            </div>
+            <button onclick="openHelpModal()" class="text-indigo-600 hover:text-indigo-800 font-semibold underline shrink-0">詳しい使い方</button>
+        </div>
+
+        <section class="space-y-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Overview Mini-Map</h3>
+                    <span class="text-[11px] text-slate-400">（全例題の状況をひと目で把握）</span>
+                </div>
+
+                <!-- 凡例 -->
+                <div class="flex items-center gap-3 text-xs font-medium bg-white/80 border border-slate-100 px-3 py-1 rounded-lg flex-wrap shadow-2xs">
+                    <div class="flex items-center gap-1.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-slate-300"></span>
+                        <span class="text-slate-500">未着手</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                        <span class="text-slate-700">正解</span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                        <span class="text-slate-700">不正解</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 動的マトリックス描画領域 -->
+            <div id="overview-matrix-container" class="space-y-4">
+                <!-- JSで動的生成 -->
+            </div>
+        </section>
+
+        <section class="space-y-3 pt-2">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="flex items-center gap-3 flex-wrap">
+                    <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">例題リスト</h3>
+
+                    <!-- フィルタタブ -->
+                    <div id="filter-tabs" class="flex items-center bg-slate-200/70 p-0.5 rounded-lg text-xs font-medium flex-wrap">
+                        <button onclick="setFilter('all')" id="filter-btn-all" class="px-3 py-1 rounded-md bg-white text-slate-900 font-bold shadow-2xs">すべて</button>
+                        <button onclick="setFilter('unattempted')" id="filter-btn-unattempted" class="px-3 py-1 rounded-md text-slate-500 hover:text-slate-800">未着手</button>
+                        <button onclick="setFilter('incorrect')" id="filter-btn-incorrect" class="px-3 py-1 rounded-md text-slate-500 hover:text-slate-800">不正解</button>
+                        <button onclick="setFilter('correct')" id="filter-btn-correct" class="px-3 py-1 rounded-md text-slate-500 hover:text-slate-800">正解</button>
+                        <button onclick="setFilter('review')" id="filter-btn-review" class="px-3 py-1 rounded-md text-slate-500 hover:text-slate-800">📌 復習</button>
+                    </div>
+                </div>
+
+                <div class="text-xs text-slate-500">
+                    習得済み例題: <strong id="stat-solved-count" class="text-emerald-600 font-bold">0</strong> / <span id="stat-total-display">400</span>
+                </div>
+            </div>
+
+            <!-- 例題カードリスト -->
+            <div id="problem-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-[550px] overflow-y-auto pr-1">
+                <!-- JSで動的生成 -->
+            </div>
+        </section>
+    </div>
+
+    <!-- ==================== Modals ==================== -->
+
+    <!-- モーダル1: 新しい問題集を追加 -->
+    <div id="modal-new-workbook" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="w-full max-w-sm bg-white rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h3 class="font-bold text-slate-900 text-sm">新しい問題集を追加</h3>
+                <button onclick="closeModal('modal-new-workbook')" class="text-slate-400 hover:text-slate-700 text-xs">✕</button>
+            </div>
+
+            <form onsubmit="handleCreateWorkbook(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block font-medium text-slate-600 mb-1">問題集のタイトル</label>
+                    <input type="text" id="new-title" required placeholder="例: 青チャート 数学II+B" class="w-full px-3 py-2 bg-slate-50 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-400 font-medium">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-medium text-slate-600 mb-1">初期例題数</label>
+                        <input type="number" id="new-count" min="1" max="1000" value="400" required class="w-full px-3 py-2 bg-slate-50 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-400 font-medium">
+                    </div>
+                    <div>
+                        <label class="block font-medium text-slate-600 mb-1">初期目標周回数</label>
+                        <input type="number" id="new-rounds" min="1" max="10" value="3" required class="w-full px-3 py-2 bg-slate-50 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-400 font-medium">
+                    </div>
+                </div>
+
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('modal-new-workbook')" class="px-3.5 py-1.5 bg-slate-100 text-slate-600 rounded-lg font-medium">キャンセル</button>
+                    <button type="submit" class="px-3.5 py-1.5 bg-slate-900 text-white rounded-lg font-medium hover:bg-slate-800">追加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- モーダル2: 単元追加・編集 -->
+    <div id="modal-units" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="w-full max-w-lg bg-white rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h3 class="font-bold text-slate-900 text-sm">単元（セクション）の設定</h3>
+                <button onclick="closeModal('modal-units')" class="text-slate-400 hover:text-slate-700 text-xs">✕</button>
+            </div>
+
+            <div class="space-y-3">
+                <p class="text-xs text-slate-500 leading-relaxed">例題番号の範囲（例: 1〜35）を指定して単元を登録します。登録した単元ごとにブロックが自動生成されます。</p>
+                
+                <!-- 単元登録フォーム -->
+                <form onsubmit="handleAddUnit(event)" class="flex items-center gap-2 text-xs">
+                    <input type="text" id="unit-input-name" placeholder="単元名 (例: 2次関数)" required class="flex-1 px-3 py-2 bg-slate-50 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-400">
+                    <input type="number" id="unit-input-start" placeholder="開始" min="1" required class="w-16 px-2 py-2 bg-slate-50 rounded-lg text-center focus:outline-none focus:ring-1 focus:ring-slate-400">
+                    <span>〜</span>
+                    <input type="number" id="unit-input-end" placeholder="終了" min="1" required class="w-16 px-2 py-2 bg-slate-50 rounded-lg text-center focus:outline-none focus:ring-1 focus:ring-slate-400">
+                    <button type="submit" class="px-3.5 py-2 bg-slate-900 text-white font-medium rounded-lg hover:bg-slate-800 transition shrink-0">追加</button>
+                </form>
+
+                <!-- 登録済み単元リスト -->
+                <div id="unit-list-container" class="max-h-52 overflow-y-auto space-y-1.5 pt-2">
+                    <!-- JSで動的生成 -->
+                </div>
+            </div>
+
+            <div class="pt-2 flex justify-end">
+                <button onclick="closeModal('modal-units')" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- モーダル3: 削除確認 -->
+    <div id="modal-delete-confirm" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="w-full max-w-xs bg-white rounded-2xl p-5 space-y-4 shadow-2xl text-center">
+            <div class="w-10 h-10 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto text-lg font-bold">!</div>
+            <p class="text-xs font-bold text-slate-800">この問題集と記録を削除しますか？</p>
+            <div class="flex justify-center gap-2 text-xs">
+                <button onclick="closeModal('modal-delete-confirm')" class="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg font-medium">キャンセル</button>
+                <button id="btn-confirm-delete" class="px-3.5 py-1.5 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700">削除する</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== モーダル4: 使い方ガイド ==================== -->
+    <div id="modal-help" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-white rounded-2xl p-6 space-y-4 shadow-2xl text-xs">
+            <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h3 class="font-bold text-slate-900 text-sm">
+                    使い方
+                </h3>
+                <button onclick="closeModal('modal-help')" class="text-slate-400 hover:text-slate-700">✕</button>
+            </div>
+
+            <div class="space-y-3 text-slate-600 leading-relaxed">
+                <div class="space-y-1">
+                    <p class="font-bold text-slate-800">1. 単元ごとの設定と例題数の調整</p>
+                    <p>問題番号の範囲を指定して単元を登録することで、単元ごとの進捗を分かりやすく整理・管理することができます。</p>
+                </div>
+
+                <div class="space-y-1">
+                    <p class="font-bold text-slate-800">2. ステータスの記録方法</p>
+                    <p>各問題の周回ボタンをクリックするとステータスが切り替わります：</p>
+                    <div class="flex items-center gap-4 py-1">
+                        <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-slate-300"></span> 未着手</span>
+                        <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> 正解</span>
+                        <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> 不正解</span>
+                    </div>
+                </div>
+
+                <div class="space-y-1">
+                    <p class="font-bold text-slate-800">3. 復習チェック機能</p>
+                    <p>各例題の周回ボタンの左側にあるチェックマーク（📌）を押すと、重点的に復習したい問題としてマークできます。フィルターで「復習」を選ぶと、チェックした問題だけを絞り込んで復習できます。</p>
+                </div>
+            </div>
+
+            <div class="pt-2 flex justify-end">
+                <button onclick="closeModal('modal-help')" class="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const UNIT_THEMES = [
+            { bg: 'bg-indigo-50', text: 'text-indigo-700', badgeBg: 'bg-indigo-600' },
+            { bg: 'bg-amber-50', text: 'text-amber-800', badgeBg: 'bg-amber-600' },
+            { bg: 'bg-sky-50', text: 'text-sky-700', badgeBg: 'bg-sky-600' },
+            { bg: 'bg-violet-50', text: 'text-violet-700', badgeBg: 'bg-violet-600' },
+            { bg: 'bg-teal-50', text: 'text-teal-800', badgeBg: 'bg-teal-600' },
+            { bg: 'bg-orange-50', text: 'text-orange-800', badgeBg: 'bg-orange-600' }
+        ];
+
+        const STORAGE_KEY = 'math_chart_workbooks_v4_review';
+
+        let state = {
+            workbooks: [],
+            currentWorkbookId: null,
+            activeFilter: 'all',
+            pendingDeleteId: null,
+            _version: 4
+        };
+
+        function loadData() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    if (parsed._version >= 3 && Array.isArray(parsed.workbooks)) {
+                        state.workbooks = parsed.workbooks;
+                        return;
+                    }
+                } catch (e) {
+                    console.error("Failed to load local storage state:", e);
+                }
+            }
+
+            state.workbooks = [
+                {
+                    id: 'wb_1',
+                    title: '青チャート 数学I+A',
+                    totalCount: 400,
+                    maxRounds: 3,
+                    units: [],
+                    records: {}, // { problemNum: { status: [0, 1, 2], review: true } }
+                },
+                {
+                    id: 'wb_2',
+                    title: 'Focus Gold 数学II+B',
+                    totalCount: 400,
+                    maxRounds: 3,
+                    units: [],
+                    records: {}
+                }
+            ];
+            saveData();
+        }
+
+        function saveData() {
+            try {
+                const payload = {
+                    _version: state._version,
+                    workbooks: state.workbooks
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+            } catch (e) {
+                console.error("Storage save failed:", e);
+            }
+        }
+
+        function showLibraryView() {
+            state.currentWorkbookId = null;
+            document.getElementById('view-library').classList.remove('hidden');
+            document.getElementById('view-tracker').classList.add('hidden');
+            renderLibrary();
+        }
+
+        function openWorkbook(id) {
+            state.currentWorkbookId = id;
+            document.getElementById('view-library').classList.add('hidden');
+            document.getElementById('view-tracker').classList.remove('hidden');
+            renderTracker();
+        }
+
+        function getActiveWorkbook() {
+            return state.workbooks.find(w => w.id === state.currentWorkbookId);
+        }
+
+        function renderLibrary() {
+            const grid = document.getElementById('workbook-grid');
+            grid.innerHTML = '';
+
+            state.workbooks.forEach(wb => {
+                let solvedCount = 0;
+                for (let i = 1; i <= wb.totalCount; i++) {
+                    const item = wb.records[i];
+                    const rec = item ? (Array.isArray(item) ? item : item.status) : [];
+                    if (rec && rec.some(val => val === 1)) {
+                        solvedCount++;
+                    }
+                }
+                const pct = Math.round((solvedCount / wb.totalCount) * 100) || 0;
+
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-2xl p-5 hover:shadow-md transition duration-200 flex flex-col justify-between space-y-4 group cursor-pointer shadow-xs border border-slate-100";
+                card.onclick = (e) => {
+                    if (e.target.closest('.no-open')) return;
+                    openWorkbook(wb.id);
+                };
+
+                card.innerHTML = `
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[11px] font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded">
+                                目標 ${wb.maxRounds} 周
+                            </span>
+                            <button onclick="promptDeleteWorkbook('${wb.id}')" class="no-open text-slate-400 hover:text-rose-600 text-xs transition px-1">
+                                削除
+                            </button>
+                        </div>
+                        <h3 class="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition">${wb.title}</h3>
+                        <p class="text-xs text-slate-400">全 ${wb.totalCount} 例題 • 単元数 ${wb.units ? wb.units.length : 0}</p>
+                    </div>
+
+                    <div class="space-y-1.5 pt-2">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-500 font-medium">習得率</span>
+                            <span class="font-bold text-slate-800">${solvedCount} / ${wb.totalCount} (${pct}%)</span>
+                        </div>
+                        <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div class="bg-slate-900 h-full rounded-full transition-all duration-300" style="width: ${pct}%"></div>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function renderTracker() {
+            const wb = getActiveWorkbook();
+            if (!wb) return;
+
+            document.getElementById('tracker-title').textContent = wb.title;
+            document.getElementById('input-total-count').value = wb.totalCount;
+            document.getElementById('input-max-rounds').value = wb.maxRounds;
+            document.getElementById('stat-total-display').textContent = wb.totalCount;
+
+            renderMiniMap(wb);
+            renderProblemList(wb);
+        }
+
+        // ドット生成ヘルパー (0:未着手, 1:正解, 2:不正解)
+        function createDotElement(val) {
+            const dot = document.createElement('div');
+            if (val === 1) {
+                dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 matrix-dot";
+            } else if (val === 2) {
+                dot.className = "w-2.5 h-2.5 rounded-full bg-rose-500 matrix-dot";
+            } else {
+                dot.className = "w-2.5 h-2.5 rounded-full bg-slate-300 matrix-dot";
+            }
+            return dot;
+        }
+
+        function renderMiniMap(wb) {
+            const container = document.getElementById('overview-matrix-container');
+            container.innerHTML = '';
+
+            const getRec = (i) => {
+                const item = wb.records[i];
+                if (!item) return Array(wb.maxRounds).fill(0);
+                return Array.isArray(item) ? item : (item.status || Array(wb.maxRounds).fill(0));
+            };
+
+            if (!wb.units || wb.units.length === 0) {
+                const wrapper = document.createElement('div');
+                wrapper.className = "p-4 bg-white/90 border border-slate-100 rounded-2xl shadow-xs space-y-2";
+
+                const dotsWrapper = document.createElement('div');
+                dotsWrapper.className = "flex flex-wrap gap-1.5 justify-start items-center";
+
+                const fragment = document.createDocumentFragment();
+
+                for (let i = 1; i <= wb.totalCount; i++) {
+                    const rec = getRec(i);
+
+                    const pColumn = document.createElement('div');
+                    pColumn.className = "flex flex-col gap-1 items-center cursor-pointer py-0.5 px-0.5 rounded hover:bg-slate-100 transition";
+                    pColumn.title = `例題 ${i}`;
+                    pColumn.onclick = () => scrollToProblem(i);
+
+                    for (let r = 0; r < wb.maxRounds; r++) {
+                        const val = rec[r] || 0;
+                        pColumn.appendChild(createDotElement(val));
+                    }
+                    fragment.appendChild(pColumn);
+                }
+
+                dotsWrapper.appendChild(fragment);
+                wrapper.appendChild(dotsWrapper);
+                container.appendChild(wrapper);
+                return;
+            }
+
+            let sections = [];
+            let coveredIndices = new Set();
+
+            wb.units.forEach((u, idx) => {
+                sections.push({
+                    id: u.id,
+                    name: u.name,
+                    start: u.start,
+                    end: Math.min(u.end, wb.totalCount),
+                    theme: UNIT_THEMES[idx % UNIT_THEMES.length]
+                });
+                for (let i = u.start; i <= Math.min(u.end, wb.totalCount); i++) {
+                    coveredIndices.add(i);
+                }
+            });
+
+            let unassigned = [];
+            for (let i = 1; i <= wb.totalCount; i++) {
+                if (!coveredIndices.has(i)) unassigned.push(i);
+            }
+
+            if (unassigned.length > 0) {
+                sections.push({
+                    id: 'sec_unassigned',
+                    name: 'その他・未割り当て',
+                    start: unassigned[0],
+                    end: unassigned[unassigned.length - 1],
+                    theme: { bg: 'bg-slate-100', text: 'text-slate-600', badgeBg: 'bg-slate-600' },
+                    specificIndices: unassigned
+                });
+            }
+
+            sections.forEach(sec => {
+                const sectionBlock = document.createElement('div');
+                sectionBlock.className = `p-3.5 rounded-xl border border-slate-100 ${sec.theme.bg} space-y-2.5 transition`;
+
+                const header = document.createElement('div');
+                header.className = "flex items-center justify-between";
+                header.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full ${sec.theme.badgeBg}"></span>
+                        <button onclick="scrollToProblem(${sec.start})" class="text-xs font-bold ${sec.theme.text} hover:underline">
+                            ${sec.name} (${sec.start}〜${sec.end})
+                        </button>
+                    </div>
+                    <button onclick="resetUnitRecords(${sec.start}, ${sec.end})" class="text-[10px] font-semibold text-slate-400 hover:text-rose-600 transition px-2 py-0.5 rounded hover:bg-white/80">
+                        この単元をリセット
+                    </button>
+                `;
+                sectionBlock.appendChild(header);
+
+                const dotsWrapper = document.createElement('div');
+                dotsWrapper.className = "flex flex-wrap gap-1.5 items-center bg-white/70 p-2.5 rounded-lg border border-slate-100/60";
+
+                const rangeList = sec.specificIndices || Array.from({length: sec.end - sec.start + 1}, (_, k) => sec.start + k);
+                const fragment = document.createDocumentFragment();
+
+                rangeList.forEach(pNum => {
+                    if (pNum > wb.totalCount) return;
+
+                    const rec = getRec(pNum);
+
+                    const pColumn = document.createElement('div');
+                    pColumn.className = "flex flex-col gap-1 items-center cursor-pointer p-0.5 rounded hover:bg-white/90 transition";
+                    pColumn.title = `例題 ${pNum}`;
+                    pColumn.onclick = () => scrollToProblem(pNum);
+
+                    for (let r = 0; r < wb.maxRounds; r++) {
+                        const val = rec[r] || 0;
+                        pColumn.appendChild(createDotElement(val));
+                    }
+                    fragment.appendChild(pColumn);
+                });
+
+                dotsWrapper.appendChild(fragment);
+                sectionBlock.appendChild(dotsWrapper);
+                container.appendChild(sectionBlock);
+            });
+        }
+
+        function renderProblemList(wb) {
+            const list = document.getElementById('problem-list');
+            list.innerHTML = '';
+
+            let solvedCount = 0;
+            const fragment = document.createDocumentFragment();
+
+            for (let i = 1; i <= wb.totalCount; i++) {
+                const item = wb.records[i];
+                const rec = item ? (Array.isArray(item) ? item : (item.status || Array(wb.maxRounds).fill(0))) : Array(wb.maxRounds).fill(0);
+                const isReview = item ? (item.review || false) : false;
+                
+                const isMastered = rec.some(v => v === 1);
+                if (isMastered) solvedCount++;
+
+                if (state.activeFilter === 'unattempted' && rec.some(v => v !== 0)) continue;
+                if (state.activeFilter === 'incorrect' && !rec.includes(2)) continue;
+                if (state.activeFilter === 'correct' && !rec.includes(1)) continue;
+                if (state.activeFilter === 'review' && !isReview) continue;
+
+                const unitIndex = wb.units ? wb.units.findIndex(u => i >= u.start && i <= u.end) : -1;
+                const unit = unitIndex !== -1 ? wb.units[unitIndex] : null;
+                const unitTheme = unitIndex !== -1 ? UNIT_THEMES[unitIndex % UNIT_THEMES.length] : null;
+
+                const card = document.createElement('div');
+                card.id = `problem-card-${i}`;
+                card.className = "bg-white rounded-xl p-3 border border-slate-100 flex items-center justify-between gap-3 transition hover:shadow-xs";
+
+                const reviewBtnClass = isReview 
+                    ? "bg-amber-100 text-amber-700 border-amber-300 font-bold" 
+                    : "bg-slate-50 text-slate-300 border-slate-200 hover:text-slate-500 hover:border-slate-300";
+
+                let roundBtnsHtml = `
+                    <button onclick="toggleReview(${i})" class="w-7 h-7 rounded-lg border text-xs flex items-center justify-center transition shrink-0 ${reviewBtnClass}" title="復習チェック">
+                        📌
+                    </button>
+                `;
+
+                for (let r = 0; r < wb.maxRounds; r++) {
+                    const status = rec[r] || 0;
+                    let btnClass = "bg-slate-100 text-slate-500 hover:bg-slate-200";
+                    let labelText = `${r + 1}周`;
+                    let iconHtml = '';
+
+                    if (status === 1) {
+                        btnClass = "bg-emerald-500 text-white shadow-2xs font-bold";
+                        iconHtml = '<span class="inline-block w-1.5 h-1.5 rounded-full bg-white mr-1"></span>';
+                    } else if (status === 2) {
+                        btnClass = "bg-rose-500 text-white shadow-2xs font-bold";
+                        iconHtml = '<span class="inline-block w-1.5 h-1.5 rounded-full bg-white mr-1"></span>';
+                        labelText = `${r + 1}周(×)`;
+                    }
+
+                    roundBtnsHtml += `
+                        <button onclick="cycleStatus(${i}, ${r})" class="px-2.5 py-1 text-xs font-semibold rounded-md transition flex items-center justify-center ${btnClass}" title="クリックしてステータス切替">
+                            ${iconHtml}${labelText}
+                        </button>
+                    `;
+                }
+
+                card.innerHTML = `
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <span class="text-xs font-bold text-slate-900 shrink-0">例題 ${i}</span>
+                        ${unit ? `<span class="text-[10px] font-semibold px-2 py-0.5 rounded ${unitTheme.bg} ${unitTheme.text} truncate max-w-[110px]">${unit.name}</span>` : ''}
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        ${roundBtnsHtml}
+                    </div>
+                `;
+
+                fragment.appendChild(card);
+            }
+
+            list.appendChild(fragment);
+            document.getElementById('stat-solved-count').textContent = solvedCount;
+        }
+
+        function cycleStatus(problemIndex, roundIndex) {
+            const wb = getActiveWorkbook();
+            if (!wb) return;
+
+            if (!wb.records[problemIndex]) {
+                wb.records[problemIndex] = { status: Array(wb.maxRounds).fill(0), review: false };
+            } else if (Array.isArray(wb.records[problemIndex])) {
+                wb.records[problemIndex] = { status: wb.records[problemIndex], review: false };
+            }
+
+            const current = wb.records[problemIndex].status[roundIndex] || 0;
+            let next = (current + 1) % 3;
+
+            wb.records[problemIndex].status[roundIndex] = next;
+            saveData();
+            renderTracker();
+        }
+
+        function toggleReview(problemIndex) {
+            const wb = getActiveWorkbook();
+            if (!wb) return;
+
+            if (!wb.records[problemIndex]) {
+                wb.records[problemIndex] = { status: Array(wb.maxRounds).fill(0), review: true };
+            } else if (Array.isArray(wb.records[problemIndex])) {
+                wb.records[problemIndex] = { status: wb.records[problemIndex], review: true };
+            } else {
+                wb.records[problemIndex].review = !wb.records[problemIndex].review;
+            }
+
+            saveData();
+            renderTracker();
+        }
+
+        function resetUnitRecords(start, end) {
+            const wb = getActiveWorkbook();
+            if (!wb) return;
+
+            for (let i = start; i <= end; i++) {
+                if (wb.records[i]) {
+                    if (Array.isArray(wb.records[i])) {
+                        wb.records[i] = Array(wb.maxRounds).fill(0);
+                    } else {
+                        wb.records[i].status = Array(wb.maxRounds).fill(0);
+                    }
+                }
+            }
+            saveData();
+            renderTracker();
+        }
+
+        function exportDataJSON() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `chart_log_backup_${new Date().toISOString().slice(0,10)}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+
+        function triggerJSONImport() {
+            document.getElementById('json-file-input').click();
+        }
+
+        function importDataJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (imported && Array.isArray(imported.workbooks)) {
+                        state.workbooks = imported.workbooks;
+                        if (imported._version) state._version = imported._version;
+                        saveData();
+                        renderLibrary();
+                        if (state.currentWorkbookId) renderTracker();
+                    }
+                } catch (err) {
+                    console.error("Invalid JSON import file:", err);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function scrollToProblem(num) {
+            const el = document.getElementById(`problem-card-${num}`);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.classList.add('bg-indigo-50/80');
+                setTimeout(() => el.classList.remove('bg-indigo-50/80'), 1500);
+            }
+        }
+
+        function setFilter(type) {
+            state.activeFilter = type;
+            ['all', 'unattempted', 'incorrect', 'correct', 'review'].forEach(t => {
+                const btn = document.getElementById(`filter-btn-${t}`);
+                if (!btn) return;
+                if (t === type) {
+                    btn.className = "px-3 py-1 rounded-md bg-white text-slate-900 font-bold shadow-2xs";
+                } else {
+                    btn.className = "px-3 py-1 rounded-md text-slate-500 hover:text-slate-800";
+                }
+            });
+            const wb = getActiveWorkbook();
+            if (wb) renderProblemList(wb);
+        }
+
+        function updateTotalCount(val) {
+            const wb = getActiveWorkbook();
+            if (!wb) return;
+            wb.totalCount = Math.max(1, Math.min(1000, parseInt(val, 10) || 1));
+            saveData();
+            renderTracker();
+        }
+
+        function addTotalCount(amount) {
+            const wb = getActiveWorkbook();
+            if (!wb) return;
+            wb.totalCount = Math.max(1, Math.min(1000, (wb.totalCount || 0) + amount));
+            saveData();
+            renderTracker();
+        }
+
+        function updateMaxRounds(val) {
+            const wb = getActiveWorkbook();
+            if (!wb) return;
+            wb.maxRounds = Math.max(1, Math.min(10, parseInt(val, 10) || 1));
+            saveData();
+            renderTracker();
+        }
+
+        function openNewWorkbookModal() {
+            document.getElementById('modal-new-workbook').classList.remove('hidden');
+        }
+
+        function handleCreateWorkbook(e) {
+            e.preventDefault();
+            const title = document.getElementById('new-title').value.trim();
+            const count = parseInt(document.getElementById('new-count').value, 10) || 400;
+            const rounds = parseInt(document.getElementById('new-rounds').value, 10) || 3;
+
+            const newWb = {
+                id: 'wb_' + Date.now(),
+                title,
+                totalCount: count,
+                maxRounds: rounds,
+                units: [],
+                records: {}
+            };
+
+            state.workbooks.push(newWb);
+            saveData();
+            closeModal('modal-new-workbook');
+            renderLibrary();
+        }
+
+        function promptDeleteWorkbook(id) {
+            state.pendingDeleteId = id;
+            document.getElementById('modal-delete-confirm').classList.remove('hidden');
+            document.getElementById('btn-confirm-delete').onclick = () => {
+                state.workbooks = state.workbooks.filter(w => w.id !== state.pendingDeleteId);
+                saveData();
+                closeModal('modal-delete-confirm');
+                renderLibrary();
+            };
+        }
+
+        function openUnitModal() {
+            const wb = getActiveWorkbook();
+            if (!wb) return;
+            renderUnitList(wb);
+            document.getElementById('modal-units').classList.remove('hidden');
+        }
+
+        function openHelpModal() {
+            document.getElementById('modal-help').classList.remove('hidden');
+        }
+
+        function renderUnitList(wb) {
+            const container = document.getElementById('unit-list-container');
+            container.innerHTML = '';
+
+            if (!wb.units || wb.units.length === 0) {
+                container.innerHTML = '<p class="text-xs text-slate-400 text-center py-3">単元がまだ登録されていません</p>';
+                return;
+            }
+
+            wb.units.forEach((u, idx) => {
+                const theme = UNIT_THEMES[idx % UNIT_THEMES.length];
+                const row = document.createElement('div');
+                row.className = "flex items-center justify-between bg-slate-50 p-2 rounded-lg text-xs border border-slate-100";
+                row.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full ${theme.badgeBg}"></span>
+                        <span class="font-bold text-slate-800">${u.name}</span>
+                        <span class="text-slate-400">(${u.start} 〜 ${u.end})</span>
+                    </div>
+                    <button onclick="removeUnit('${u.id}')" class="text-rose-500 hover:text-rose-700 font-medium px-1">削除</button>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        function handleAddUnit(e) {
+            e.preventDefault();
+            const wb = getActiveWorkbook();
+            if (!wb) return;
+
+            if (!wb.units) wb.units = [];
+
+            const name = document.getElementById('unit-input-name').value.trim();
+            const start = parseInt(document.getElementById('unit-input-start').value, 10);
+            const end = parseInt(document.getElementById('unit-input-end').value, 10);
+
+            if (start > end) return;
+
+            wb.units.push({
+                id: 'u_' + Date.now(),
+                name,
+                start,
+                end
+            });
+
+            wb.units.sort((a, b) => a.start - b.start);
+
+            saveData();
+            document.getElementById('unit-input-name').value = '';
+            document.getElementById('unit-input-start').value = '';
+            document.getElementById('unit-input-end').value = '';
+
+            renderUnitList(wb);
+            renderTracker();
+        }
+
+        function removeUnit(unitId) {
+            const wb = getActiveWorkbook();
+            if (!wb) return;
+            wb.units = wb.units.filter(u => u.id !== unitId);
+            saveData();
+            renderUnitList(wb);
+            renderTracker();
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        window.onload = function() {
+            loadData();
+            renderLibrary();
+        };
+    </script>
+</body>
+</html>
